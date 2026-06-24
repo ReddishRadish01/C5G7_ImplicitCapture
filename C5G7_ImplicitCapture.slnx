@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="C5G7_ImplicitCapture/C5G7_ImplicitCapture.vcxproj" Id="4770d0da-f22e-42ab-998e-e6f32a82656e" />
+</Solution>
