@@ -29,7 +29,6 @@
 
 
 int main() {
-	//MCMHPrinter();
 	int num = 500000;
 	
 	int numCycle = 3301;

@@ -157,7 +157,6 @@
     <ClInclude Include="Debug.cuh" />
     <ClInclude Include="GpuManager.cuh" />
     <ClInclude Include="Interaction.cuh" />
-    <ClInclude Include="MCdrawer.h" />
     <ClInclude Include="Neutron.cuh" />
     <ClInclude Include="NeutronBankManager.cuh" />
     <ClInclude Include="RNG.cuh" />
