@@ -548,7 +548,7 @@ int main() {
 
 #ifdef TALLYLASTCYCLE
 	GPU_Manager::FetchCoreTallyToHost(h_CoreTally, d_bufferTallyAssembly, d_bufferTallyPincellVec);
-	DumpCoreTallyToText(h_CoreTally, fluxTallyLog, activeCycle + inactiveCycle, 10, meanK);
+	DumpCoreTallyToText(h_CoreTally, fluxTallyLog, activeCycle + inactiveCycle, 0, meanK);
 	
 #endif
 

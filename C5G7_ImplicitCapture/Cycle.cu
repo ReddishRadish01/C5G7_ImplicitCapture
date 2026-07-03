@@ -15,7 +15,8 @@
 //#define REFLECTIONDEBUG
 #define OUTBOUNDDEBUG
 
-#define TALLYINCYCLE
+//#define TALLYINCYCLE
+#define TALLYFissionSourceDist
 
 
 constexpr double globaleps = 1.0e-10;
@@ -194,8 +195,11 @@ G void cycle_Neutron(NeutronBank* Bank, C5G7Geometry* Core, TallyC5G7Geometry* C
             //vec3 flooredNeutronPos = Core->assembly->returnFlooredNeutronPosInPincell(localNeutron);
             Assembly currentAssembly = Core->returnAssemblyByNeutron(Bank->neutrons[idx]);
             // currently, currentAssembly pushes the neutron inside the assembly by its dirvec direction
-
+            double fissionCount = 0.0;
 #ifdef TALLYINCYCLE
+            TallyAssembly currentTallyAssembly = CoreTally->returnAssemblyByNeutron(Bank->neutrons[idx]);
+#endif
+#ifdef TALLYFissionSourceDist
             TallyAssembly currentTallyAssembly = CoreTally->returnAssemblyByNeutron(Bank->neutrons[idx]);
 #endif
 
@@ -212,6 +216,9 @@ G void cycle_Neutron(NeutronBank* Bank, C5G7Geometry* Core, TallyC5G7Geometry* C
             Pincell currentPincell = currentAssembly.returnPincellByPos(Bank->neutrons[idx]);
             vec3 flooredNeutronPos = currentAssembly.returnFlooredNeutronPosInPincell(Bank->neutrons[idx]);
 #ifdef TALLYINCYCLE
+            TallyPincell currentTallyPincell = currentTallyAssembly.returnPincellByPos(Bank->neutrons[idx]);
+#endif
+#ifdef TALLYFissionSourceDist
             TallyPincell currentTallyPincell = currentTallyAssembly.returnPincellByPos(Bank->neutrons[idx]);
 #endif
 
@@ -250,13 +257,19 @@ G void cycle_Neutron(NeutronBank* Bank, C5G7Geometry* Core, TallyC5G7Geometry* C
             if (DTC < DTS) {    // reaction
                 Bank->neutrons[idx].updateWithLength(DTC);
                 //vec3 flooredNeutronPos = Core->assembly->returnFlooredNeutronPosInPincell(Bank->neutrons[idx]);
+
+                // implicit reaction - in order to accomodate neutron weight and some RR shits
+                Interaction::reaction_implicit(Bank->neutrons[idx], Bank, XSLib, currentPincell, flooredNeutronPos, RNG, k_mult, passFlag, false, fissionWeight, fissionCount);
+
 #ifdef TALLYINCYCLE
                 if (currentPincell.meatOrMod(flooredNeutronPos) == MatType::MOD) { atomicAdd(&(currentTallyAssembly.returnPincellByPos(Bank->neutrons[idx]).modTally), DTC); }
                 else { atomicAdd(&(currentTallyAssembly.returnPincellByPos(Bank->neutrons[idx]).pinTally), DTC); }
 #endif
 
-                // implicit reaction - in order to accomodate neutron weight and some RR shits
-                Interaction::reaction_implicit(Bank->neutrons[idx], Bank, XSLib, currentPincell, flooredNeutronPos, RNG, k_mult, passFlag, false, fissionWeight);
+#ifdef TALLYFissionSourceDist
+                if (currentPincell.meatOrMod(flooredNeutronPos) == MatType::MOD) { atomicAdd(&(currentTallyAssembly.returnPincellByPos(Bank->neutrons[idx]).modTally), fissionCount); }
+                else { atomicAdd(&(currentTallyAssembly.returnPincellByPos(Bank->neutrons[idx]).pinTally), fissionCount); }
+#endif
 
                 Interaction::russianRoulette(Bank->neutrons[idx], Bank, RNG, 0.25, 0.5, false);
                 if (Bank->neutrons[idx].isNullified()) {
@@ -422,7 +435,11 @@ G void cycle_addedNeutron(NeutronBank* Bank, C5G7Geometry* Core, TallyC5G7Geomet
 
             //vec3 flooredNeutronPos = Core->assembly->returnFlooredNeutronPosInPincell(localNeutron);
             Assembly currentAssembly = Core->returnAssemblyByNeutron(Bank->addedNeutrons[idx]);
+            double fissionCount = 0.0;
 #ifdef TALLYINCYCLE
+            TallyAssembly currentTallyAssembly = CoreTally->returnAssemblyByNeutron(Bank->addedNeutrons[idx]);
+#endif
+#ifdef TALLYFissionSourceDist
             TallyAssembly currentTallyAssembly = CoreTally->returnAssemblyByNeutron(Bank->addedNeutrons[idx]);
 #endif
 
@@ -439,6 +456,9 @@ G void cycle_addedNeutron(NeutronBank* Bank, C5G7Geometry* Core, TallyC5G7Geomet
             vec3 flooredAddedNeutronPos = currentAssembly.returnFlooredNeutronPosInPincell(Bank->addedNeutrons[idx]);
                 
 #ifdef TALLYINCYCLE
+            TallyPincell currentTallyPincell = currentTallyAssembly.returnPincellByPos(Bank->addedNeutrons[idx]);
+#endif
+#ifdef TALLYFissionSourceDist
             TallyPincell currentTallyPincell = currentTallyAssembly.returnPincellByPos(Bank->addedNeutrons[idx]);
 #endif
 
@@ -472,12 +492,17 @@ G void cycle_addedNeutron(NeutronBank* Bank, C5G7Geometry* Core, TallyC5G7Geomet
             if (DTC < DTS) {    // reaction
                 Bank->addedNeutrons[idx].updateWithLength(DTC);
                 //vec3 flooredNeutronPos = Core->assembly->returnFlooredNeutronPosInPincell(Bank->addedNeutrons[idx]);
+
+                Interaction::reaction_implicit(Bank->addedNeutrons[idx], Bank, XSLib, currentPincell, flooredAddedNeutronPos, RNG, k_mult, passFlag, true, fissionWeight, fissionCount);
+
 #ifdef TALLYINCYCLE
                 if (currentPincell.meatOrMod(flooredAddedNeutronPos) == MatType::MOD) { atomicAdd(&(currentTallyAssembly.returnPincellByPos(Bank->addedNeutrons[idx]).modTally), DTC); }
                 else { atomicAdd(&(currentTallyAssembly.returnPincellByPos(Bank->addedNeutrons[idx]).pinTally), DTC); }
 #endif
-
-                Interaction::reaction_implicit(Bank->addedNeutrons[idx], Bank, XSLib, currentPincell, flooredAddedNeutronPos, RNG, k_mult, passFlag, true, fissionWeight);
+#ifdef TALLYFissionSourceDist
+                if (currentPincell.meatOrMod(flooredAddedNeutronPos) == MatType::MOD) { atomicAdd(&(currentTallyAssembly.returnPincellByPos(Bank->addedNeutrons[idx]).modTally), fissionCount); }
+                else { atomicAdd(&(currentTallyAssembly.returnPincellByPos(Bank->addedNeutrons[idx]).pinTally), fissionCount); }
+#endif
 
                 Interaction::russianRoulette(Bank->addedNeutrons[idx], Bank, RNG, 0.25, 0.5, true);
                 if (Bank->addedNeutrons[idx].isNullified()) {

@@ -6,7 +6,7 @@ from typing import Dict, Tuple, Optional
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle, Circle
-from matplotlib.colors import Normalize
+from matplotlib.colors import Normalize, PowerNorm
 
 
 @dataclass
@@ -165,7 +165,9 @@ def plot_cycle_k_power01(
     vmax = float(np.max(finite))
     if vmax <= vmin:
         vmax = vmin + 1.0
-    norm = Normalize(vmin=vmin, vmax=vmax)
+    #norm = Normalize(vmin=vmin, vmax=vmax)
+    cmap = plt.get_cmap("turbo")
+    norm = PowerNorm(gamma=1.6, vmin=vmin, vmax=vmax)
 
     fig, ax = plt.subplots(figsize=(9, 9))
 
@@ -196,7 +198,8 @@ def plot_cycle_k_power01(
                 dy,
                 linewidth=0.02,
                 edgecolor="k",
-                facecolor=plt.cm.viridis(mod01),
+                #facecolor=plt.cm.viridis(mod01),
+                facecolor=cmap(norm(mod)),
             )
             ax.add_patch(sq)
 
@@ -209,7 +212,9 @@ def plot_cycle_k_power01(
                     linewidth=0.1,
                     alpha=0.5,
                     edgecolor="k",
-                    facecolor=plt.cm.viridis(pin01),
+                    #facecolor=plt.cm.viridis(pin01),
+                    facecolor=cmap(norm(pin)),
+
                 )
                 ax.add_patch(circ)
 
@@ -222,10 +227,11 @@ def plot_cycle_k_power01(
         title += f", keff={cycle.keff:.6f}"
     ax.set_title(title)
 
-    sm = plt.cm.ScalarMappable(cmap=plt.cm.viridis, norm=Normalize(vmin=0.0, vmax=1.0))
+    #sm = plt.cm.ScalarMappable(cmap=plt.cm.viridis, norm=Normalize(vmin=0.0, vmax=1.0))
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=Normalize(vmin=0.0, vmax=1.0))
     sm.set_array([])
     cbar = plt.colorbar(sm, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label("Flux (normalized 0–1, shared for mod+pin)")
+    cbar.set_label("Power (normalized 0–1, shared for mod+pin)")
 
     if cycle.core_size is not None:
         cx, cy, _ = cycle.core_size
@@ -245,10 +251,10 @@ def plot_cycle_k_power01(
 
 
 if __name__ == "__main__":
-    infile = "flux_Tally20260205_165504.txt"
+    infile = "flux_Tally20260703_140900.txt"
     out_dir = "plots_Total"
-    k_slice = 10
+    k_slice = 0
 
     cyc = parse_single_cycle_file(infile)
     outpath = os.path.join(out_dir, f"power01_cycle{cyc.cycle_no}_k{k_slice}.png")
-    plot_cycle_k_power01(cyc, k_slice=k_slice, outpath=outpath, show=False)
+    plot_cycle_k_power01(cyc, k_slice=k_slice, outpath=outpath, show=True)

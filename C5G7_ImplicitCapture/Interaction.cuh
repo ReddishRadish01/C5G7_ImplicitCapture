@@ -48,7 +48,7 @@ public:
 
 	}
 
-	D static void fission_forced(Neutron& n, NeutronBank* Bank, MatXS& matXS, GnuAMCM& RNG, double* k_mult, bool passFlag, double* fissionStrength) {
+	D static void fission_forced(Neutron& n, NeutronBank* Bank, MatXS& matXS, GnuAMCM& RNG, double* k_mult, bool passFlag, double* fissionStrength, double& fissionCount) {
 		
 		int g = static_cast<int>(n.energy);
 		double nu = matXS.nu[g - 1];
@@ -62,6 +62,7 @@ public:
 		double daughterWeight = n.weight * matXS.fisXS[g-1] / sigC;
 
 		int fissionNum = static_cast<int>(nu / *k_mult * daughterWeight + RNG.uniform(0.0, 1.0));
+		fissionCount = fissionNum;
 		// for Fission source collision estimator, you have to sum the source weight, not the Bernoulli result of source weight.
 		atomicAdd(fissionStrength, nu * daughterWeight);
 		//printf("fissionNum: %d\n", fissionNum);
@@ -112,10 +113,10 @@ public:
 		}
 	}
 
-	D static void reaction_implicit(Neutron& n, NeutronBank* Bank, XSLibrary* XSLib, Pincell currentPincell, vec3 localPos, GnuAMCM& RNG, double* k_mult, bool passFlag, bool add, double* fissionCount) {
+	D static void reaction_implicit(Neutron& n, NeutronBank* Bank, XSLibrary* XSLib, Pincell currentPincell, vec3 localPos, GnuAMCM& RNG, double* k_mult, bool passFlag, bool add, double* fissionWeight, double& fissionCount) {
 		MatType currentMat = currentPincell.meatOrMod(localPos);
 		double outEnergy = XSManager::scatteringEnergy(XSLib, currentMat, RNG, n.energy);
-		Interaction::fission_forced(n, Bank, XSLib->returnMatXSByType(currentMat), RNG, k_mult, passFlag, fissionCount);
+		Interaction::fission_forced(n, Bank, XSLib->returnMatXSByType(currentMat), RNG, k_mult, passFlag, fissionWeight, fissionCount);
 
 		MatXS& xs = XSLib->returnMatXSByType(currentMat);
 		int g = static_cast<int>(n.energy);
