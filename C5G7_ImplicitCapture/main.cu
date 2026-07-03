@@ -12,7 +12,7 @@
 #include "Debug.cuh"
 #include "Cycle.cuh"
 
-#include "MCdrawer.h"
+//#include "MCdrawer.h"
 
 #include <iomanip>
 #include <ctime>
@@ -23,30 +23,34 @@
 #define GPURUN
 //#define TALLY
 
-//#define XSRESULTDEBUG
+//#define XSRESULTDEBUGind
 
-#define TALLYWHOLECYCLE
+#define TALLYLASTCYCLE
 
 
 int main() {
-	int num = 500000;
+	cudaDeviceReset();
+	int initialNum = 500000;
+	int bankSize = initialNum * 2.0;
+
 	
 	int numCycle = 3301;
-	int inactiveCycle = 500;
-	int activeCycle = 100;
+	int inactiveCycle = 300;
+	int activeCycle = 200;
 	numCycle = inactiveCycle + activeCycle + 1;
 	int iterLimit = 10000;
 
 	int tallyFetchCycleSpec = 200;
 
 	int threadPerBlock = 32;
-	int blockPerDim = (num + threadPerBlock - 1) / threadPerBlock;
+	int blockPerDim = (bankSize + threadPerBlock - 1) / threadPerBlock;
 
 	double referenceK = 1.183810;
 	double h_multK = 0.0;
-	std::cout << "input the initial K muliplication factor:\n";
+	//std::cout << "input the initial K muliplication factor:\n";
 	//std::cin >> h_multK;
-	h_multK = referenceK;
+	//h_multK = 1.0;
+	h_multK = 1.0;
 
 	double* d_multK = nullptr;
 	cudaMalloc(&d_multK, sizeof(double));
@@ -55,17 +59,18 @@ int main() {
 	unsigned long long seedNo = 92235922383;
 
 	GnuAMCM h_RNG(seedNo);
-	unsigned long long* h_SeedArr = new unsigned long long[num];
-	for (int i = 0; i < num; i++) {
+	unsigned long long* h_SeedArr = new unsigned long long[bankSize];
+	for (int i = 0; i < bankSize; i++) {
 		h_SeedArr[i] = (h_RNG.gen() + i) & (0xFFFFFFFFFFFFULL);
 	}
 	unsigned long long* d_SeedArr = nullptr;
-	cudaMalloc(&d_SeedArr, num * sizeof(unsigned long long));
-	cudaMemcpy(d_SeedArr, h_SeedArr, num * sizeof(unsigned long long), cudaMemcpyHostToDevice);
+	cudaMalloc(&d_SeedArr, bankSize * sizeof(unsigned long long));
+	cudaMemcpy(d_SeedArr, h_SeedArr, bankSize * sizeof(unsigned long long), cudaMemcpyHostToDevice);
 
 
 
 	std::vector<MatXS> XS;
+	
 	MatXS h_UO2XS("C5txt/UO2.txt", MatType::UO2);
 	MatXS h_MOX4_3("C5txt/Mox4_3.txt", MatType::MOX4_3);
 	MatXS h_MOX7_0("C5txt/Mox7_0.txt", MatType::MOX7_0);
@@ -73,6 +78,16 @@ int main() {
 	MatXS h_FC("C5txt/FC.txt", MatType::FC);
 	MatXS h_GT("C5txt/GT.txt", MatType::GT);
 	MatXS h_Mod("C5txt/Mod.txt", MatType::MOD);
+	
+	/*
+	MatXS h_UO2XS("C5Unity/UO2.txt", MatType::UO2);
+	MatXS h_MOX4_3("C5Unity/Mox4_3.txt", MatType::MOX4_3);
+	MatXS h_MOX7_0("C5Unity/Mox7_0.txt", MatType::MOX7_0);
+	MatXS h_MOX8_7("C5Unity/Mox8_7.txt", MatType::MOX8_7);
+	MatXS h_FC("C5Unity/FC.txt", MatType::FC);
+	MatXS h_GT("C5Unity/GT.txt", MatType::GT);
+	MatXS h_Mod("C5Unity/Mod.txt", MatType::MOD);
+	*/
 #ifdef XSRESULTDEBUG
 	std::cout << h_UO2XS.transXS[0] << " " << h_Mod.transXS[2] << "\n";
 #endif
@@ -96,14 +111,16 @@ int main() {
 
 	C5G7Geometry h_Core{};
 	C5G7GeometryFactory::Initialize(h_Core, "Geometry/C5G7CoreGeometry.txt", "Geometry/UO2Geometry.txt", "Geometry/MOXGeometry.txt");
+	//C5G7GeometryFactory::Initialize(h_Core, "Geometry_unity/unityGeometry.txt", "Geometry_unity/unityUO2Geometry.txt", "Geometry_unity/MOXGeometry.txt");
+	std::cout << h_Core.x << " " << h_Core.y << " " << h_Core.z << "\n";
 	Assembly* d_bufferAssembly = nullptr;
 	std::vector<Pincell*> d_bufferPincellVec(h_Core.assemblyNo, nullptr);
 	C5G7Geometry* d_Core = GPU_Manager::CoreDeviceAllocator(h_Core, d_bufferAssembly, d_bufferPincellVec);
 
-	double h_NeutronNum = static_cast<double>(num);
+	double h_NeutronNum = static_cast<double>(initialNum);
 	double* d_NeutronNum = nullptr;
-	double h_NeutronWeightSum = 1.0 * num;
-	double initialWeight = 1.0 * num;
+	double h_NeutronWeightSum = 1.0 * initialNum;
+	double initialWeight = 1.0 * initialNum;
 	double* d_NeutronWeightSum = nullptr;
 	double h_NeutronWeightModifier = 1.0;
 	double* d_NeutronWeightModifier = nullptr;
@@ -128,7 +145,7 @@ int main() {
 	cudaMalloc(&d_Neutron, sizeof(Neutron));
 	cudaMemcpy(d_Neutron, &h_Neutron, sizeof(Neutron), cudaMemcpyHostToDevice);
 
-	NeutronBank h_Bank(num, seedNo);
+	NeutronBank h_Bank(bankSize, initialNum, seedNo);
 
 
 	// fetch K to text file
@@ -166,15 +183,24 @@ int main() {
 
 
 
-	for (int i = 0; i < h_Bank.neutronSize; i++) {
-		vec3 randPos = { h_RNG.uniform_open(0, h_Core.x), h_RNG.uniform_open(0, h_Core.y), h_RNG.uniform_open(0, h_Core.z) };
-		vec3 centerRandPos = { h_RNG.uniform_open(0, 20), h_RNG.uniform_open(0, 20) ,h_RNG.uniform_open(0, 20) };
-		h_Bank.neutrons[i] = Neutron(randPos, vec3::randomUnit(h_RNG), static_cast<double>(h_RNG.int_dist(1, 7)), 1.0);
+	for (int i = 0; i < h_Bank.allocatableNeutronNum; i++) {
+		if (i < h_Bank.neutronSize) {
+			vec3 randPos = { h_RNG.uniform_open(0, h_Core.x), h_RNG.uniform_open(0, h_Core.y), h_RNG.uniform_open(0, h_Core.z) };
+			vec3 centerRandPos = { h_RNG.uniform_open(0, h_Core.x / 3.0), h_RNG.uniform_open(0, h_Core.y / 3.0) ,h_RNG.uniform_open(0, h_Core.z / 3.0) };
+			//h_Bank.neutrons[i] = Neutron(centerRandPos, vec3::randomUnit(h_RNG), static_cast<double>(h_RNG.int_dist(1, 7)), 1.0);
+			h_Bank.neutrons[i] = Neutron(randPos, vec3::randomUnit(h_RNG), static_cast<double>(h_RNG.int_dist(1, 7)), 1.0);
+			
+		}
+		else {
+			h_Bank.neutrons[i] = Neutron();
+		}
 		//h_Bank.neutrons[i] = Neutron({ 0.1, 0.1, 0.1 }, { -1.0, 0.0, 0.0 }, static_cast<double>(h_RNG.int_dist(1, 7)), 1.0);
 		//h_Bank.neutrons[i] = Neutron({ 0.63, 0.63, 0.63 }, { 1.0, 0.0, 0.0 }, static_cast<double>(h_RNG.int_dist(1, 7)), 1.0);
 		//h_Bank.neutrons[i] = Neutron(randPos, vec3::randomUnit(h_RNG), 1, 1.0);
 		h_Bank.addedNeutrons[i] = Neutron();
 		//h_Bank.addedNeutrons[i].status = false;
+		//h_Bank.neutrons[i].printInfo();
+		//h_Bank.addedNeutrons[i].printInfo();
 	}
 
 	NeutronBank* d_Bank = nullptr;
@@ -207,78 +233,130 @@ int main() {
 	int activeCount = 0;
 
 
-	double h_fissionCount = static_cast<double>(num) / 2.05;
+	double h_fissionCount = initialNum;
 	double* d_fissionCount = nullptr;
 	cudaMalloc(&(d_fissionCount), sizeof(double));
 	cudaMemcpy(d_fissionCount, &h_fissionCount, sizeof(double), cudaMemcpyHostToDevice);
-	double fissionCountBuffer = 0.0;
-
+	double fissionCountBuffer = initialWeight;
+	double weightBuffer = initialWeight;
 	auto t_start = std::chrono::steady_clock::now();
 
 
 	for (int cycle = 0; cycle < numCycle; cycle++) {
 		cycleNum++;
-		double absorption = 0.0;
-		double fission = 0.0;
-		double leak = 0.0;
+
 		double currentNumNeutron = h_Bank.getTotalNeutronNum();
 
 #ifdef CPURUN
+		double absorption = 0.0;
+		double fission = 0.0;
+		double leak = 0.0;
 		cycle_addedNeutron_CPU(&h_Bank, &h_Core, &h_CoreTally, &h_XSLib, h_SeedArr, &h_multK, true, absorption, fission, leak);
 		addedNeutronPassResetter_CPU(&h_Bank);
 		cycle_Neutron_CPU(&h_Bank, &h_Core, &h_CoreTally, &h_XSLib, h_SeedArr, &h_multK, false, absorption, fission, leak);
 #endif
 		
 #ifdef GPURUN
+		/*
 		//ResetCoreTallyOnDevice(h_CoreTally, d_bufferTallyAssembly, d_bufferTallyPincellVec);
+		// 1. 먼저 현재 bank의 weight sum을 잰다
+		cudaMemset(d_NeutronNum, 0, sizeof(double));
+		cudaMemset(d_NeutronWeightSum, 0, sizeof(double));
+		fetchNeutronNumber << <blockPerDim, threadPerBlock >> > (d_Bank, d_NeutronNum, d_NeutronWeightSum);
+		cudaMemcpy(d_Bank, &h_Bank, sizeof(NeutronBank), cudaMemcpyDeviceToHost);
+		cudaMemcpy(&h_NeutronNum, d_NeutronNum, sizeof(double), cudaMemcpyDeviceToHost);
+		cudaMemcpy(&h_NeutronWeightSum, d_NeutronWeightSum, sizeof(double), cudaMemcpyDeviceToHost);
+
+		std::cout << "before normalization, NeutronNum: " << h_NeutronNum << ", Weight Sum : " << h_NeutronWeightSum << "\n";
+
+
+		h_NeutronWeightModifier = initialWeight / h_NeutronWeightSum;
+		cudaMemcpy(d_NeutronWeightModifier, &h_NeutronWeightModifier, sizeof(double), cudaMemcpyHostToDevice);
+
+		globalNeutronWeightOffset << <blockPerDim, threadPerBlock >> > (d_Bank, d_NeutronWeightModifier);
+		cudaMemcpy(d_Bank, &h_Bank, sizeof(NeutronBank), cudaMemcpyDeviceToHost);
+
 		
 		cudaMemset(d_NeutronNum, 0, sizeof(double));
 		cudaMemset(d_NeutronWeightSum, 0, sizeof(double));
+		fetchNeutronNumber << <blockPerDim, threadPerBlock >> > (d_Bank, d_NeutronNum, d_NeutronWeightSum);
+		cudaMemcpy(d_Bank, &h_Bank, sizeof(NeutronBank), cudaMemcpyDeviceToHost);
+		cudaMemcpy(&h_NeutronNum, d_NeutronNum, sizeof(double), cudaMemcpyDeviceToHost);
+		cudaMemcpy(&h_NeutronWeightSum, d_NeutronWeightSum, sizeof(double), cudaMemcpyDeviceToHost);
 
-		h_NeutronWeightModifier =   1.0 * (initialWeight/ h_NeutronWeightSum);
-		//cudaMemcpy(d_NeutronWeightModifier, &h_NeutronWeightModifier, sizeof(double), cudaMemcpyHostToDevice);
+		std::cout << "After normalization, NeutronNum: " << h_Bank.getTotalNeutronNum() << ", Weight Sum: " << h_NeutronWeightSum << "\n";
 
 
-		globalNeutronWeightOffset<<<blockPerDim, threadPerBlock>>>(d_Bank, d_NeutronWeightModifier);
+
+		fissionCountBuffer = h_fissionCount;
+		h_fissionCount = 0.0; cudaMemcpy(d_fissionCount, &h_fissionCount, sizeof(double), cudaMemcpyHostToDevice);
+		*/
+
+		cudaMemset(d_NeutronNum, 0, sizeof(double));
+		cudaMemset(d_NeutronWeightSum, 0, sizeof(double));
+		fetchNeutronNumber << <blockPerDim, threadPerBlock >> > (d_Bank, d_NeutronNum, d_NeutronWeightSum);
+		cudaMemcpy(&h_NeutronNum, d_NeutronNum, sizeof(double), cudaMemcpyDeviceToHost);
+		cudaMemcpy(&h_NeutronWeightSum, d_NeutronWeightSum, sizeof(double), cudaMemcpyDeviceToHost);
+
+		//std::cout << " before normalization, NeutronNum: " << h_NeutronNum << ", Neutron Weight Sum: " << h_NeutronWeightSum << ", initialWeight: " << initialWeight << "\n";
+
+
+		h_NeutronWeightModifier = 1.0 * (initialWeight / h_NeutronWeightSum);
+		cudaMemcpy(d_NeutronWeightModifier, &h_NeutronWeightModifier, sizeof(double), cudaMemcpyHostToDevice);
+		weightBuffer = h_NeutronWeightSum;
+
+		globalNeutronWeightOffset << <blockPerDim, threadPerBlock >> > (d_Bank, d_NeutronWeightModifier);
 
 		h_NeutronNum = 0.0; cudaMemcpy(d_NeutronNum, &h_NeutronNum, sizeof(double), cudaMemcpyHostToDevice);
 		h_NeutronWeightSum = 0.0; cudaMemcpy(d_NeutronWeightSum, &h_NeutronWeightSum, sizeof(double), cudaMemcpyHostToDevice);
 
 		fetchNeutronNumber << <blockPerDim, threadPerBlock >> > (d_Bank, d_NeutronNum, d_NeutronWeightSum);
-
 		cudaMemcpy(&h_NeutronNum, d_NeutronNum, sizeof(double), cudaMemcpyDeviceToHost);
 		cudaMemcpy(&h_NeutronWeightSum, d_NeutronWeightSum, sizeof(double), cudaMemcpyDeviceToHost);
-		std::cout << " NeutronNum: "  << h_NeutronNum << ", Neutron Weight Sum: " << h_NeutronWeightSum << "\n";
 
-		fissionCountBuffer = h_fissionCount;
-		h_fissionCount = 0.0; cudaMemcpy(d_fissionCount, &h_fissionCount, sizeof(double), cudaMemcpyHostToDevice);
+		std::cout << "B4 weight: " << weightBuffer << ", After weight normalization, NeutronNum: " << h_NeutronNum << ", Neutron Weight Sum: " << h_NeutronWeightSum << "\n";
 		
+		
+
+		//fissionCountBuffer = h_fissionCount;
+		h_fissionCount = 0.0; cudaMemcpy(d_fissionCount, &h_fissionCount, sizeof(double), cudaMemcpyHostToDevice); // same as cudaMemset but explicitly set h_fissionCount to 0.0
+		//cudaMemset(&(d_fissionCount), 0.0, sizeof(double));
+
 		cycle_addedNeutron << <blockPerDim, threadPerBlock >> > (d_Bank, d_Core, d_CoreTally, d_XSLib, d_SeedArr, d_multK, true, iterLimit, d_fissionCount);
 		//CUDA_KERNEL_CHECK();
-		addedNeutronPassResetter<<<blockPerDim, threadPerBlock>>>(d_Bank);
+		addedNeutronPassResetter << <blockPerDim, threadPerBlock >> > (d_Bank);
 		//CUDA_KERNEL_CHECK();
 		cycle_Neutron << <blockPerDim, threadPerBlock >> > (d_Bank, d_Core, d_CoreTally, d_XSLib, d_SeedArr, d_multK, false, iterLimit, d_fissionCount);
 		//CUDA_KERNEL_CHECK();
-		
 
 
 		cudaMemcpy(&h_fissionCount, d_fissionCount, sizeof(double), cudaMemcpyDeviceToHost);
-		//fissionCountBuffer = h_fissionCount;
-		double collisionEstK = h_fissionCount / fissionCountBuffer;
-		std::cout << "Previous fission: " << fissionCountBuffer << ", Current Fission Count: " << h_fissionCount << ",\tCollisionEstimator: " << h_fissionCount / fissionCountBuffer << "\n";
+
+
+		
+
+		if (cycle == 0) {
+			//fissionCountBuffer = h_fissionCount;
+		}
+
+		double collisionEstK =  h_fissionCount / fissionCountBuffer;
+		//double collisionEstK = h_fissionCount / initialWeight;
+
+		//std::cout << "Previous fission: " << fissionCountBuffer << ", Current Fission Count: " << h_fissionCount << ",\tCollisionEstimator: " << h_fissionCount / fissionCountBuffer << "\n";
+		std::cout << "initial Weight: " << initialWeight	<< ", Current Fission strength: " << h_fissionCount << ", previous Fission strength: " << fissionCountBuffer << ", CollisionEstimator: " << collisionEstK << "\n";
 		// this just fetches only the number of neutrons
 		cudaMemcpy(&h_Bank, d_Bank, sizeof(NeutronBank), cudaMemcpyDeviceToHost);
 		cudaMemcpy(&h_multK, d_multK, sizeof(double), cudaMemcpyDeviceToHost);
 		
-
+		fissionCountBuffer = h_fissionCount;
 #endif
 		
 		currentNumNeutron = h_Bank.getTotalNeutronNum();
 		//currentNumNeutron = h_NeutronNum;
 		double oldK = h_multK;
-		std::cout << "Cycle " << cycle + 1 << ", currentNum: " << currentNumNeutron;
+		std::cout << "Cycle " << cycle + 1 << ", currentNum: " << currentNumNeutron << " consisting of original + added bank: " << h_Bank.neutronSize << " + " << h_Bank.addedNeutronSize << "\n";
 		//h_multK = h_multK * currentNumNeutron / previousNumNeutron;
-		h_multK = h_multK *collisionEstK;
+		h_multK *= collisionEstK;
 		previousNumNeutron = currentNumNeutron;
 		std::cout << "\tk: " << h_multK << "\n";
 		//std::cout << "\t n count : " << h_Bank.neutronSize << " addn count : " << h_Bank.addedNeutronSize << " addN addIndex : " << h_Bank.addedNeutronIndex;
@@ -305,7 +383,7 @@ int main() {
 
 
 
-#ifdef TALLYWHOLECYCLE
+#ifdef TALLYLASTCYCLE
 		if (cycle == inactiveCycle + 1) {
 			// marks the start of the tally fetch:
 			ResetCoreTallyOnDevice(h_CoreTally, d_bufferTallyAssembly, d_bufferTallyPincellVec);
@@ -370,7 +448,7 @@ int main() {
 #ifdef CPURUN
 		std::cout << "  capture: " << absorption << " , fission neutron num: " << fission << ", leak: " << leak << "\n";
 #endif
-
+		// Welford Algorithm for calculating the running mean
 		klog << (cycle + 1) << " " << h_multK << "\n";
 		if (cycle > inactiveCycle) {
 			activeCount += 1;
@@ -379,11 +457,11 @@ int main() {
 			meanK += delta / activeCount;
 			double delta2 = x - meanK;
 			M2 += delta * delta2;
-
 		}
 
 		
-		if (h_Bank.addedNeutronIndex > h_Bank.allocatableNeutronNum * 0.8) {
+		//if (h_Bank.addedNeutronIndex > h_Bank.allocatableNeutronNum * 0.8) {
+		if (true) {
 			std::cout << "Merging:\n";
 #ifdef CPURUN
 			std::vector<Neutron> NeutronContainer;
@@ -434,6 +512,7 @@ int main() {
 
 #ifdef GPURUN
 			GPU_Manager::compact_bank_device(d_Bank);
+			cudaMemcpy(&h_Bank, d_Bank, sizeof(NeutronBank), cudaMemcpyDeviceToHost);
 		}
 #endif
 		
@@ -452,23 +531,25 @@ int main() {
 		std::cout << "\n\nActive cycles: " << activeCount << "\n";
 		std::cout << "k_mean: " << std::fixed << std::setprecision(7) << meanK << "\n";
 		std::cout << "k_stddev(cycle): " << stddev << "\n";
+		std::cout << "Difference with the reference K: " << meanK - referenceK << ", Per cent error: " << (meanK - referenceK) / referenceK * 100 << "\n"; 
 		std::cout << "k_stderr(mean): " << stderr_mean << "\n";
+		std::cout << "Reactivity(rho): " << (meanK - 1.0) / meanK << ", pcm difference: " << ((meanK - 1.0) / meanK) * 100000 - ((referenceK - 1.0) / referenceK) * 100000 << "\n";
 
-		std::cout << "Reactivity(rho): " << (meanK - 1.0) / meanK << ", Per Cent error compared to reference: " <<  (referenceK - 1) / referenceK - (meanK - 1.0) / meanK << "\n";
 
 		klog << "\n\nActive cycles: " << activeCount << "\n";
 		klog << "k_mean: " << meanK << "\n";
 		klog << "k_stddev(cycle): " << stddev << "\n";
 		klog << "k_stderr(mean): " << stderr_mean << "\n";
-		klog << "Reactivity(rho): " << (meanK - 1.0) / meanK << ", Per Cent error compared to reference: " << ((referenceK - 1) / referenceK - (meanK - 1.0) / meanK) * 100 << "\n";
+		klog << "Difference with the reference K: " << meanK - referenceK  << ", Per cent error: " << (meanK - referenceK) / referenceK * 100 << "\n";
+		klog << "Reactivity(rho): " << (meanK - 1.0) / meanK << ", pcm difference: " << ((meanK - 1.0) / meanK) * 100000 - ((referenceK - 1.0) / referenceK) * 100000 << "\n";
 		klog << "Total Time: " << elapsed.count() << "seconds. Average: " << elapsed.count() / cycleNum << " seconds per cycle.\n";
 	
 	}
 
-#ifdef TALLYWHOLECYCLE
+#ifdef TALLYLASTCYCLE
 	GPU_Manager::FetchCoreTallyToHost(h_CoreTally, d_bufferTallyAssembly, d_bufferTallyPincellVec);
 	DumpCoreTallyToText(h_CoreTally, fluxTallyLog, activeCycle + inactiveCycle, 10, meanK);
-
+	
 #endif
 
 

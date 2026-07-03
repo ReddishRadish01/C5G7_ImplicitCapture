@@ -165,20 +165,21 @@ public:
 	
 
 	HD TallyAssembly& returnAssemblyByNeutron(Neutron& n) {
-		double eps = 1.0e-15;
-		double x = n.dirVec.x > 0 ? eps : -eps;
-		double y = n.dirVec.y > 0 ? eps : -eps;
-		double z = n.dirVec.z > 0 ? eps : -eps;
+		double eps = 1.0e-12;
+		double x = n.dirVec.x > 0 ? n.dirVec.x * eps : n.dirVec.x * -eps;
+		double y = n.dirVec.y > 0 ? n.dirVec.y * eps : n.dirVec.y * -eps;
+		double z = n.dirVec.z > 0 ? n.dirVec.z * eps : n.dirVec.z * -eps;
 		vec3 epsVec = { x, y, z };
 		//Neutron localN = n;
 		//localN.pos = localN.pos + epsVec;
 		//n.pos = n.pos + epsVec;
+		vec3 localPos = n.pos + epsVec;
 
 		for (int i = 0; i < this->assemblyNo; i++) {
 			vec3 endPos = this->tallyAssembly[i].startPos + this->tallyAssembly[i].length;
-			if (n.pos.x >= this->tallyAssembly[i].startPos.x && n.pos.x < endPos.x) {
-				if (n.pos.y >= this->tallyAssembly[i].startPos.y && n.pos.y < endPos.y) {
-					if (n.pos.z >= this->tallyAssembly[i].startPos.z && n.pos.z < endPos.z) {
+			if (localPos.x >= this->tallyAssembly[i].startPos.x && localPos.x < endPos.x) {
+				if (localPos.y >= this->tallyAssembly[i].startPos.y && localPos.y < endPos.y) {
+					if (localPos.z >= this->tallyAssembly[i].startPos.z && localPos.z < endPos.z) {
 						return this->tallyAssembly[i];
 					}
 				}

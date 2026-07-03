@@ -149,15 +149,18 @@ struct MatXS {
 		
 		// this below is to compensate for 10^{-5} degress of bias in transXS compared when every other XS is added up.
 		// we force the transXS to be the sum of other XS.
-		
-		
-		
-		
+
+		/*
 		for (int g = 0; g < 7; g++) {
 			transXS[g] = capXS[g] + fisXS[g];
 			for (int i = 0; i < 7; i++) {
 				transXS[g] += elsXS[g][i];
 			}
+		}
+		*/
+		// likewise for absorption XS
+		for (int g = 0; g < 7; g++) {
+			absXS[g] = capXS[g] + fisXS[g];
 		}
 
 	
@@ -179,7 +182,21 @@ struct MatXS {
 
 	H void g7DeviceAllocator(MatXS*& d_G7);
 
+	
+
 };
+
+HD inline double scatterSum(const MatXS& xs, int g) {
+	double s = 0.0;
+	for (int gp = 0; gp < 7; ++gp) {
+		s += xs.elsXS[g - 1][gp];
+	}
+	return s;
+}
+
+HD inline double collisionXS(const MatXS& xs, int g) {
+	return xs.capXS[g - 1] + xs.fisXS[g - 1] + scatterSum(xs, g);
+}
 
 
 class XSLibrary {
@@ -210,7 +227,6 @@ public:
 		}
 	}
 
-	
 };
 
 

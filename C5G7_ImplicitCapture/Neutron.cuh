@@ -96,7 +96,7 @@ struct Neutron {
 	double weight;
 
 	__host__ __device__ Neutron()
-		: pos({ 0.0, 0.0, 0.0 }), dirVec({ 0.0, 0.0, 0.0 }), energy(0.0), status(false), passFlag(true), weight(1.0) 
+		: pos({ 0.0, 0.0, 0.0 }), dirVec({ 0.0, 0.0, 0.0 }), energy(0.0), status(false), passFlag(true), weight(0.0) 
 	{
 	}
 
@@ -108,7 +108,6 @@ struct Neutron {
 	__host__ __device__ Neutron(vec3 pos, Spherical sphercial, double energy, double weight = 1.0)
 		: pos(pos), dirVec(sphercial.convToVec3()), energy(energy), status(true), passFlag(false), weight(weight)
 	{
-
 	}
 
 	__host__ __device__ double Velocity() const;
@@ -160,8 +159,8 @@ struct NeutronBank {
 	int addedNeutronIndex;
 	unsigned long long seedNo;
 
-	__host__ __device__ NeutronBank(unsigned int initialNeutronNum, unsigned long long seedNo)
-		: neutrons(new Neutron[initialNeutronNum]), addedNeutrons(new Neutron[initialNeutronNum]), neutronSize(initialNeutronNum), allocatableNeutronNum(initialNeutronNum),
+	__host__ __device__ NeutronBank(unsigned int bankSize, unsigned int neutronNum, unsigned long long seedNo)
+		: neutrons(new Neutron[bankSize]), addedNeutrons(new Neutron[bankSize]), neutronSize(neutronNum), allocatableNeutronNum(bankSize),
 		addedNeutronSize(0), addedNeutronIndex(0), seedNo(seedNo)
 	{
 	}

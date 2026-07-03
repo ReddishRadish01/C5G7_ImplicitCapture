@@ -14,7 +14,7 @@
 HD TallyPincell& TallyAssembly::returnPincellByPos(Neutron& n) {
 	vec3 localAssemblyPos = n.pos - this->startPos;
 
-	double eps = 1.0e-14;
+	double eps = 1.0e-11;
 	double x = n.dirVec.x > 0 ? eps : -eps;
 	double y = n.dirVec.y > 0 ? eps : -eps;
 	double z = n.dirVec.z > 0 ? eps : -eps;
@@ -31,7 +31,7 @@ HD TallyPincell& TallyAssembly::returnPincellByPos(Neutron& n) {
 
 
 	if (xIdx >= this->xNum || yIdx >= this->yNum || zIdx >= this->zNum) {
-		printf("TallyPincell: index [%d][%d][%d] out of bounds, neutron pos: (%f, %f, %f). OOB Pincell returned. SL: %f, H: %f\n ", xIdx, yIdx, zIdx, n.pos.x, n.pos.y, n.pos.z, cellSideLength, cellHeight);
+		//printf("TallyPincell: index [%d][%d][%d] out of bounds, neutron pos: (%f, %f, %f). OOB Pincell returned. SL: %f, H: %f\n ", xIdx, yIdx, zIdx, n.pos.x, n.pos.y, n.pos.z, cellSideLength, cellHeight);
 		return this->OOBPincell;
 		//return this->pinCells[0];
 	}

@@ -160,10 +160,25 @@ public:
         tmp.reserve(static_cast<size_t>(dv.neutronSize + dv.addedNeutronSize));
 
         for (int j = 0; j < cap; ++j) {
+            /*
             if (!hN[j].isNullified() && hN[j].pos.x > 0.0 && hN[j].pos.y > 0.0 && hN[j].pos.z > 0.0) { hN[j].passFlag = false; tmp.push_back(hN[j]); }
             if (!hA[j].isNullified() && hA[j].pos.x > 0.0 && hA[j].pos.y > 0.0 && hA[j].pos.z > 0.0) { hA[j].passFlag = false; tmp.push_back(hA[j]); }
+            */
+
+            if (!hN[j].isNullified()) {
+                hN[j].passFlag = false;
+                tmp.push_back(hN[j]);
+            }
+
+            if (!hA[j].isNullified()) {
+                hA[j].passFlag = false;
+                tmp.push_back(hA[j]);
+            }
+
             hN[j].Nullify();
             hA[j].Nullify();
+            
+
         }
 
         const int total = static_cast<int>(tmp.size());

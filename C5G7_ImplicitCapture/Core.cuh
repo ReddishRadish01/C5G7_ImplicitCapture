@@ -5,6 +5,11 @@
 
 constexpr double meatOrModEps = 1.0e-4;
 
+HD inline void updateBestDistance(double t, double& best, double epsT) {
+	if (isfinite(t) && t > epsT && t < best) {
+		best = t;
+	}
+}
 
 class Pincell {
 public:
@@ -30,10 +35,10 @@ public:
 
 		// rest is for regular pincell
 		vec2 center = { this->sideLength / 2.0 + centerOffset.x, this->sideLength / 2.0 + centerOffset.y };
-		if ((pincellLocalPos.x - center.x) * (pincellLocalPos.x - center.x) + (pincellLocalPos.y - center.y) * (pincellLocalPos.y - center.y) >= (radius * radius))
-			return modType;
-		else 
+		if ((pincellLocalPos.x - center.x) * (pincellLocalPos.x - center.x) + (pincellLocalPos.y - center.y) * (pincellLocalPos.y - center.y) <= (radius * radius))
 			return meatType;
+		else 
+			return modType;
 	}
 
 
@@ -151,11 +156,11 @@ public:
 
 	}
 	
-	HD Pincell& returnPincellByIndex(int x, int y, int z);
 
 	HD int totalPincellNo();
-	HD Pincell& returnPincellByPos(Neutron& n);
-	HD vec3 returnFlooredNeutronPosInPincell(Neutron& n);
+	HD Pincell& returnPincellByIndex(int x, int y, int z);
+	HD Pincell& returnPincellByPos(const Neutron& n);
+	HD vec3 returnFlooredNeutronPosInPincell(const Neutron& n);
 	HD double DTC(Neutron& n, XSLibrary* XSLib, GnuAMCM& RNG);
 	HD double DTS(Neutron& n);
 };
@@ -188,19 +193,18 @@ public:
 		z = 2.1420;
 	}
 
-
+	// force bump into the neutron's directing assembly - this is to avoid the neutron being on the boundary of two assemblies, 
+	// which will cause problems in the returnAssemblyByNeutron function.
 	HD Assembly& returnAssemblyByNeutron(Neutron& n) {
-
-		/*
-		double eps = 1.0e-15;
-		double x = n.dirVec.x > 0 ? eps : -eps;
-		double y = n.dirVec.y > 0 ? eps : -eps;
-		double z = n.dirVec.z > 0 ? eps : -eps;
-		vec3 epsVec = { x, y, z };
+		double eps = 1.0e-13;
+		
+		
 		//Neutron localN = n;
 		//localN.pos = localN.pos + epsVec;
+		//you push the neutron inside.
 		//n.pos = n.pos + epsVec;
-		*/
+
+		// really need boundary management 
 
 		for (int i = 0; i < this->assemblyNo; i++) {
 			vec3 endPos = this->assembly[i].startPos + this->assembly[i].length;
@@ -213,14 +217,89 @@ public:
 			}
 		}
 
+
+
 		// this usually means fucked up - 
 		// we are never meant to pass the out-of-bounds neutrons, or nullified neutrons in this function.
 		// we never want the code to flow into this far, in this function - idK why it ended up here, maybe put some debugger outputs just in case
+
+		
+		printf("Neutron stuck\t");
+		double x = n.dirVec.x * eps;
+		double y = n.dirVec.y * eps;
+		double z = n.dirVec.z * eps;
+		vec3 epsVec = { x, y, z };
+
+		n.pos = n.pos + epsVec;
+
+		for (int i = 0; i < this->assemblyNo; i++) {
+			vec3 endPos = this->assembly[i].startPos + this->assembly[i].length;
+			if (n.pos.x >= this->assembly[i].startPos.x && n.pos.x < endPos.x) {
+				if (n.pos.y >= this->assembly[i].startPos.y && n.pos.y < endPos.y) {
+					if (n.pos.z >= this->assembly[i].startPos.z && n.pos.z < endPos.z) {
+						return this->assembly[i];
+					}
+				}
+			}
+		}
+
 		printf("Neutron Out-Of-Bounds in Position: (%f, %f, %f)\n", n.pos.x, n.pos.y, n.pos.z);
 		//n.Nullify();
 		// return null assembly 
 		return this->nullAssembly;
+		
+		
 	}
+
+	HD Assembly& unstuckNeutron(Neutron& n) {
+		double eps = 1.0e-12;
+		//printf("Neutron stuck, passed to unstuckNeutron - modifying it\t");
+		double xBump = 0.0;
+		double yBump = 0.0;
+		double zBump = 0.0;
+
+		double bigEps = 1.0E-8;
+		if (fmod(n.pos.x, 21.42) < eps || fmod(n.pos.x, 21.42) > 21.42 - eps) {
+			xBump = n.dirVec.x > 0 ? bigEps : -bigEps;
+		}
+		if (fmod(n.pos.y, 21.42) < eps || fmod(n.pos.y, 21.42) > 21.42 - eps) {
+			yBump = n.dirVec.y > 0 ? bigEps : -bigEps;
+		}
+
+		if (fmod(n.pos.z, 1.26) < eps || fmod(n.pos.z, 1.26) > 1.26 - eps) {
+			zBump = n.dirVec.z > 0 ? bigEps : -bigEps;
+		}
+
+		/*
+		double x = n.dirVec.x > 0 ? n.dirVec.x * eps : n.dirVec.x * -eps;
+		double y = n.dirVec.y > 0 ? n.dirVec.y * eps : n.dirVec.y * -eps;
+		double z = n.dirVec.z > 0 ? n.dirVec.z * eps : n.dirVec.z * -eps;
+		*/
+		double x = n.dirVec.x * eps;
+		double y = n.dirVec.y * eps;
+		double z = n.dirVec.z * eps;
+
+		vec3 epsVec = { x + xBump, y + yBump, z + zBump };
+
+		n.pos = n.pos + epsVec;
+		printf("Neutron stuck, passed to unstuckNeutron - stuck neutron bumped to (%f, %f, %f)\n", n.pos.x, n.pos.y, n.pos.z);
+
+		for (int i = 0; i < this->assemblyNo; i++) {
+			vec3 endPos = this->assembly[i].startPos + this->assembly[i].length;
+			if (n.pos.x >= this->assembly[i].startPos.x && n.pos.x < endPos.x) {
+				if (n.pos.y >= this->assembly[i].startPos.y && n.pos.y < endPos.y) {
+					if (n.pos.z >= this->assembly[i].startPos.z && n.pos.z < endPos.z) {
+						return this->assembly[i];
+					}
+				}
+			}
+		}
+
+		printf("UnstuckNeutron Failed, neutron nullified at (%f,%f,%f)\n", n.pos.x, n.pos.y, n.pos.z);
+		n.Nullify();
+		return this->nullAssembly;
+	}
+
 };
 
 
@@ -307,7 +386,7 @@ public:
 				assemblyVec.emplace_back(asmMOD);
 				assemblyVec[i].Initialize_MOD(pincellSize, startPos, endPos);
 			}
-			//fuelLayoutDebug(assemblyVec[i]);
+			fuelLayoutDebug(assemblyVec[i]);
 
 		} 
 		//std::cout << "line size: " << lineNo - 2 << ", vector size: " << assemblyVec.size() << "\n";

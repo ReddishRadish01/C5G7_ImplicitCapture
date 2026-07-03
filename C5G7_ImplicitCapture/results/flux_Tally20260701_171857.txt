@@ -1,0 +1,7 @@
+
+
+
+CoreSize(cm) 21.42000000000000171 21.42000000000000171 21.42000000000000171
+AssemblyNo 1
+400 th cycle:
+-nan(ind) multiplication Factor

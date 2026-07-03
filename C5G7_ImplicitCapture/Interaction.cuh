@@ -18,6 +18,7 @@ public:
 		//neutron.updateWithLength(1.0e-10);
 		neutron.energy = outEnergy;
 		neutron.dirVec = vec3::randomUnit(RNG);
+		//printf(" I SCATTER\n");
 	}
 
 	HD static void absorption(Neutron& n) {
@@ -47,24 +48,26 @@ public:
 
 	}
 
-	D static void fission_forced(Neutron& n, NeutronBank* Bank, MatXS& matXS, GnuAMCM& RNG, double* k_mult, bool passFlag, double* fissionCount) {
-		double nu = matXS.nu[static_cast<int>(n.energy) - 1];
+	D static void fission_forced(Neutron& n, NeutronBank* Bank, MatXS& matXS, GnuAMCM& RNG, double* k_mult, bool passFlag, double* fissionStrength) {
+		
+		int g = static_cast<int>(n.energy);
+		double nu = matXS.nu[g - 1];
 		if (nu == 0.0) { return; }
+
 		double motherWeight = n.weight;
+		
+		double sigC = collisionXS(matXS, g);
 
-		//	 
 		//
-		double daughterWeight = n.weight * matXS.fisXS[static_cast<int>(n.energy) - 1] / matXS.transXS[static_cast<int>(n.energy) - 1];
-
+		double daughterWeight = n.weight * matXS.fisXS[g-1] / sigC;
 
 		int fissionNum = static_cast<int>(nu / *k_mult * daughterWeight + RNG.uniform(0.0, 1.0));
-		atomicAdd(fissionCount, fissionNum);
+		// for Fission source collision estimator, you have to sum the source weight, not the Bernoulli result of source weight.
+		atomicAdd(fissionStrength, nu * daughterWeight);
 		//printf("fissionNum: %d\n", fissionNum);
 		//n.dirVec = vec3::randomUnit(RNG);
 		int addIndex = 0;
 
-		// Track Length Estimator?
-		
 		if (fissionNum <= 0) {
 			//printf("No fission neutron added: \n");
 			return;
@@ -73,6 +76,10 @@ public:
 			//printf("New neutron added from forced fision: %d. Parent Neutron weight: %f \n", fissionNum, motherWeight);
 			//if (fissionNum >= 2) { printf("fissionNum greater than 2: %d\n", fissionNum); }
 			addIndex = atomicAdd(&(Bank->addedNeutronIndex), fissionNum);
+			if (addIndex + fissionNum > Bank->allocatableNeutronNum) {
+				printf("addIndex overflow: %d\n", addIndex);
+				return;
+			}
 			atomicAdd(&(Bank->addedNeutronSize), fissionNum);
 			for (int i = 0; i < fissionNum; i++) {
 				int fissionE = XSManager::returnFissionNeutronEnergy(matXS, RNG);
@@ -110,10 +117,17 @@ public:
 		double outEnergy = XSManager::scatteringEnergy(XSLib, currentMat, RNG, n.energy);
 		Interaction::fission_forced(n, Bank, XSLib->returnMatXSByType(currentMat), RNG, k_mult, passFlag, fissionCount);
 
+		MatXS& xs = XSLib->returnMatXSByType(currentMat);
+		int g = static_cast<int>(n.energy);
+		double sigS = scatterSum(xs, g);
+		double sigC = xs.capXS[g - 1] + xs.fisXS[g - 1] + sigS;
+
+		n.setWeight(n.weight * sigS / sigC);
+
 		// implicit capture: get only the elastic XS out of all the XS sum
 		//double elasXS = XSLib->returnMatXSByType(currentMat).transXS[static_cast<int>(n.energy)-1] - XSLib->returnMatXSByType(currentMat).capXS[static_cast<int>(n.energy) - 1] - XSLib->returnMatXSByType(currentMat).fisXS[static_cast<int>(n.energy) - 1];
-		double elasXS = XSLib->returnMatXSByType(currentMat).transXS[static_cast<int>(n.energy) - 1] - XSLib->returnMatXSByType(currentMat).absXS[static_cast<int>(n.energy) - 1];
-		n.setWeight(n.weight * elasXS / XSLib->returnMatXSByType(currentMat).transXS[static_cast<int>(n.energy) - 1]);
+		//double elasXS = XSLib->returnMatXSByType(currentMat).transXS[static_cast<int>(n.energy) - 1] - XSLib->returnMatXSByType(currentMat).absXS[static_cast<int>(n.energy) - 1];
+		//n.setWeight(n.weight * elasXS / XSLib->returnMatXSByType(currentMat).transXS[static_cast<int>(n.energy) - 1]);
 		//InteractionType interactionT = XSManager::returnInteracitonType(XSLib, currentMat, RNG, n.energy, outEnergy);
 		//printf("currentEnergy: %f, outEnergy: %f\n", n.energy, outEnergy);
 		Interaction::scatter(n, outEnergy, RNG);
@@ -151,9 +165,11 @@ public:
 
 	}
 
+	D static void reflection(Neutron& n, C5G7Geometry* Core, double DTS, double DTC, vec3 updatedSurfacePos, double eps) {
 
-	D static void reflection(Neutron& n, double DTS, vec3 updatedSurfacePos, double eps) {
 		vec3 reflectNormal = { 0.0, 0.0, 0.0 };
+		//vec3 afterDTCPos = n.pos + n.dirVec * DTC;
+		eps *= 10000;
 		if (updatedSurfacePos.x <= eps) {
 			reflectNormal = { 1.0, 0.0, 0.0 };
 		}
@@ -163,19 +179,32 @@ public:
 		else if (updatedSurfacePos.z <= eps) {
 			reflectNormal = { 0.0, 0.0, 1.0 };
 		}
+		else if (updatedSurfacePos.x >= Core->x - eps) {
+			reflectNormal = { -1.0, 0.0, 0.0 };
+		}
+		else if (updatedSurfacePos.y >= Core->y - eps) {
+			reflectNormal = { 0.0, -1.0, 0.0 };
+		}
+		else if (updatedSurfacePos.z >= Core->z - eps) {
+			reflectNormal = { 0.0, 0.0, -1.0 };
+		}
 		else {
 			// this is fucked
-			printf("Error - reflectnormal not set\n");
+			vec3 updatedCollisionPos = n.pos + n.dirVec * DTC;
+			//printf("Pos, (%f, %f, %f),  dir: (%f, %f, %f), DTC: %f\n", n.pos.x, n.pos.y, n.pos.z, n.dirVec.x, n.dirVec.y, n.dirVec.z, DTC);
+			printf("Error - reflectnormal not set. Pos, dirvec: (%f,%f,%f), (%f,%f,%f)\nupdatedSurfacePos: (%f,%f,%f), updatedCollisionPos: (%f,%f,%f)\n", n.pos.x, n.pos.y, n.pos.z, n.dirVec.x, n.dirVec.y, n.dirVec.z, updatedSurfacePos.x, updatedSurfacePos.y, updatedSurfacePos.z, updatedCollisionPos.x, updatedCollisionPos.y, updatedCollisionPos.z);
 			n.Nullify();
 			return;
 		}
 
-		vec3 collisionPos = n.pos + n.dirVec * DTS;
+		vec3 collisionPos = n.pos + n.dirVec * DTS * (1.0 - eps * 10);
 		vec3 reflectVec = n.dirVec - reflectNormal * 2 * n.dirVec.dot(reflectNormal);
-		collisionPos = collisionPos + reflectVec * eps * 1000;
+		//vec3 collisionPos = n.pos + reflectVec * eps * 10000;
+		//n.printInfo_Kernel(0);
 
 		n.pos = collisionPos;
 		n.dirVec = reflectVec;
+		//n.printInfo_Kernel(0);
 	}
 
 
