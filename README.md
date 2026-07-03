@@ -1,4 +1,4 @@
-# C5G7 Benchmark - Implicit Capture (Force Fission), Full Core Tally
+# C5G7 Benchmark - Implicit Capture (Forced Fission), Full Core Tally
 
 Reference 3-D Eignevalue: k = 1.183810 
 
