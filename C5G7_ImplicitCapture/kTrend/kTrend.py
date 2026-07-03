@@ -136,8 +136,8 @@ def plot_k_trend(
 
 if __name__ == "__main__":
     plot_k_trend(
-        "k_history_20260219_192436.txt",
-        out_png="plots/k_trend.png",
+        "k_history_20260703_140900.txt",
+        out_png="plots/k_trend_implicitCapture.png",
         window=50,
         inactive_cut=2500,
     )
