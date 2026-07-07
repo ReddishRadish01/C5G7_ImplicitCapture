@@ -34,7 +34,7 @@ int main() {
 	int bankSize = initialNum * 2.0;
 
 	
-	int numCycle = 3301;
+	int numCycle = 0;
 	int inactiveCycle = 300;
 	int activeCycle = 200;
 	numCycle = inactiveCycle + activeCycle + 1;
@@ -51,6 +51,7 @@ int main() {
 	//std::cin >> h_multK;
 	//h_multK = 1.0;
 	h_multK = 1.0;
+	h_multK = referenceK;
 
 	double* d_multK = nullptr;
 	cudaMalloc(&d_multK, sizeof(double));
@@ -78,6 +79,7 @@ int main() {
 	MatXS h_FC("C5txt/FC.txt", MatType::FC);
 	MatXS h_GT("C5txt/GT.txt", MatType::GT);
 	MatXS h_Mod("C5txt/Mod.txt", MatType::MOD);
+	MatXS h_CR("C5txt/CR.txt", MatType::CR);
 	
 	/*
 	MatXS h_UO2XS("C5Unity/UO2.txt", MatType::UO2);
@@ -92,7 +94,7 @@ int main() {
 	std::cout << h_UO2XS.transXS[0] << " " << h_Mod.transXS[2] << "\n";
 #endif
 
-	XS.reserve(7);
+	XS.reserve(8);
 	//XS.push_back(h_UO2XS); // uncomfortable
 	//XS.push_back(std::move(h_UO2XS)); //h_UO2XS is deprecated
 	XS.emplace_back(h_UO2XS);
@@ -102,6 +104,7 @@ int main() {
 	XS.emplace_back(h_FC);
 	XS.emplace_back(h_GT);
 	XS.emplace_back(h_Mod);
+	XS.emplace_back(h_CR);
 
 	XSLibrary h_XSLib{};
 	MatXSFactory::initialize(h_XSLib, XS);
@@ -237,7 +240,7 @@ int main() {
 	double* d_fissionCount = nullptr;
 	cudaMalloc(&(d_fissionCount), sizeof(double));
 	cudaMemcpy(d_fissionCount, &h_fissionCount, sizeof(double), cudaMemcpyHostToDevice);
-	double fissionCountBuffer = initialWeight;
+	double fissionCountBuffer = initialWeight * h_multK;
 	double weightBuffer = initialWeight;
 	auto t_start = std::chrono::steady_clock::now();
 
@@ -339,9 +342,15 @@ int main() {
 			//fissionCountBuffer = h_fissionCount;
 		}
 
-		double collisionEstK =  h_fissionCount / fissionCountBuffer;
-		//double collisionEstK = h_fissionCount / initialWeight;
+		double rawRatio = h_fissionCount / fissionCountBuffer;
+		/*
+		if (cycle < 5) {
+			rawRatio = std::max(0.75, std::min(1.25, rawRatio));
+		}
+		*/
+		double collisionEstK = rawRatio;
 
+		
 		//std::cout << "Previous fission: " << fissionCountBuffer << ", Current Fission Count: " << h_fissionCount << ",\tCollisionEstimator: " << h_fissionCount / fissionCountBuffer << "\n";
 		std::cout << "initial Weight: " << initialWeight	<< ", Current Fission strength: " << h_fissionCount << ", previous Fission strength: " << fissionCountBuffer << ", CollisionEstimator: " << collisionEstK << "\n";
 		// this just fetches only the number of neutrons
@@ -528,7 +537,9 @@ int main() {
 		double stddev = std::sqrt(var);
 		double stderr_mean = stddev / std::sqrt(static_cast<double>(activeCount));
 
+		
 		std::cout << "\n\nActive cycles: " << activeCount << "\n";
+		std::cout << "Number of Initial Nuetrons: " << initialNum << "\n";
 		std::cout << "k_mean: " << std::fixed << std::setprecision(7) << meanK << "\n";
 		std::cout << "k_stddev(cycle): " << stddev << "\n";
 		std::cout << "Difference with the reference K: " << meanK - referenceK << ", Per cent error: " << (meanK - referenceK) / referenceK * 100 << "\n"; 
@@ -537,6 +548,7 @@ int main() {
 
 
 		klog << "\n\nActive cycles: " << activeCount << "\n";
+		klog << "Number of Initial Nuetrons: " << initialNum << "\n";
 		klog << "k_mean: " << meanK << "\n";
 		klog << "k_stddev(cycle): " << stddev << "\n";
 		klog << "k_stderr(mean): " << stderr_mean << "\n";

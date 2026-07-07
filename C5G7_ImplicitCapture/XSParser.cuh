@@ -52,6 +52,7 @@ enum class MatType {
 	GT,
 	FC,
 	MOD,
+	CR,
 	Unknown
 };
 
@@ -64,7 +65,8 @@ HD static inline const char* to_string(MatType t) {
 	case MatType::GT:     return "GT";
 	case MatType::FC:     return "FC";
 	case MatType::MOD:    return "MOD";
-	case MatType::Unknown: return "UNKNWON";
+	case MatType::CR:     return "CR";
+	case MatType::Unknown: return "UNKNOWN";
 	default:              return "UNKNOWN";
 	}
 }
@@ -209,6 +211,8 @@ public:
 	MatXS GT{ MatType::GT };
 	MatXS FC{ MatType::FC };
 	MatXS MOD{ MatType::MOD };
+	MatXS CR{ MatType::CR };
+
 
 	XSLibrary() = default;
 
@@ -223,6 +227,7 @@ public:
 		case MatType::GT:		return GT;
 		case MatType::FC:		return FC;
 		case MatType::MOD:		return MOD;
+		case MatType::CR:		return CR;
 		default:				return MOD;
 		}
 	}
